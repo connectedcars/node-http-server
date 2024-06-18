@@ -1,0 +1,4 @@
+mysqldata/
+node_modules
+build
+Dockerfile
