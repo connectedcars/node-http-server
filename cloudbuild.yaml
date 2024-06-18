@@ -13,6 +13,4 @@ steps:
       - "BRANCH_NAME=$BRANCH_NAME"
       - "TAG_NAME=$TAG_NAME"
       - "COMMIT_SHA=$COMMIT_SHA"
-secrets:
-  - kmsKeyName: projects/connectedcars-staging/locations/global/keyRings/cloudbuilder/cryptoKeys/connectedcars-builder
 timeout: 3600s
