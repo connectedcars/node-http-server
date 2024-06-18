@@ -1,7 +1,8 @@
 {
-  "name": "http-server",
+  "name": "@connectedcars/-server",
   "version": "1.0.0",
   "description": "",
+  "private": true,
   "main": "build/dist/src/index.js",
   "scripts": {
     "test": "TZ=UTC jest",
