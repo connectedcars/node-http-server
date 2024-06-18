@@ -34,6 +34,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "axios": "^1.7.2",
     "@babel/cli": "7.24.6",
     "@babel/core": "7.24.6",
     "@babel/plugin-transform-class-properties": "7.24.6",
@@ -43,6 +44,7 @@
     "@babel/preset-env": "7.24.6",
     "@babel/preset-typescript": "7.24.6",
     "@connectedcars/setup": "^0.23.1",
+    "@connectedcars/test": "^1.4.1",
     "@types/jest": "29.5.12",
     "@typescript-eslint/eslint-plugin": "7.11.0",
     "@typescript-eslint/parser": "7.11.0",
