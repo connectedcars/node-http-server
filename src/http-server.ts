@@ -1,5 +1,6 @@
 import http from 'http'
 import net from 'net'
+import log from '@connectedcars/logutil'
 import { URL } from 'url'
 
 const DEFAULT_MAX_BODY_IN_BYTES = 100 * 1024
