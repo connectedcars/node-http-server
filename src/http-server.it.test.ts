@@ -36,7 +36,7 @@ async function testGetHandlerHTML(): Promise<ServerResult> {
   } as const
 }
 
-export class TestServer extends Server {
+class TestServer extends Server {
   public constructor(options: ServerOptions) {
     super(options)
 
@@ -117,7 +117,7 @@ describe('TestServer', () => {
   })
 
   describe('Route registration', () => {
-    test('GET /new-vehicle-shard', async () => {
+    it('GET /new-vehicle-shard', async () => {
       const response = await axios.get(`${server.listenUrl}/new-vehicle-shard?token=123`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual({
@@ -128,7 +128,7 @@ describe('TestServer', () => {
       })
     })
 
-    test('GET /new-vehicle-shard handles query array', async () => {
+    it('GET /new-vehicle-shard handles query array', async () => {
       const response = await axios.get(`${server.listenUrl}/new-vehicle-shard?token=456&token=123`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual({
@@ -139,7 +139,7 @@ describe('TestServer', () => {
       })
     })
 
-    test('GET /new-vehicle-shard/:shardId', async () => {
+    it('GET /new-vehicle-shard/:shardId', async () => {
       const response = await axios.get(`${server.listenUrl}/new-vehicle-shard/123?token=123`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual({
@@ -150,7 +150,7 @@ describe('TestServer', () => {
       })
     })
 
-    test('GET /new-vehicle-shard/:shardId/:vehicleId', async () => {
+    it('GET /new-vehicle-shard/:shardId/:vehicleId', async () => {
       const response = await axios.get(`${server.listenUrl}/new-vehicle-shard/123/456?token=123`)
       expect(response.status).toEqual(200)
       expect(response.headers).toMatchObject({
@@ -167,7 +167,7 @@ describe('TestServer', () => {
       })
     })
 
-    test('POST /logs', async () => {
+    it('POST /logs', async () => {
       const response = await axios.post(
         `${server.listenUrl}/logs`,
         {
@@ -191,25 +191,25 @@ describe('TestServer', () => {
       })
     })
 
-    test('GET /readiness', async () => {
+    it('GET /readiness', async () => {
       const response = await axios.get(`${server.listenUrl}/readiness`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual('OK')
     })
 
-    test('GET /liveness', async () => {
+    it('GET /liveness', async () => {
       const response = await axios.get(`${server.listenUrl}/liveness`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual('OK')
     })
 
-    test('GET /startup', async () => {
+    it('GET /startup', async () => {
       const response = await axios.get(`${server.listenUrl}/startup`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual('OK')
     })
 
-    test('GET /new-vehicle-shard with authorization header', async () => {
+    it('GET /new-vehicle-shard with authorization header', async () => {
       const response = await axios.get(`${server.listenUrl}/new-vehicle-shard`, {
         headers: {
           Authorization: 'Bearer 123'
@@ -222,7 +222,7 @@ describe('TestServer', () => {
       })
     })
 
-    test('GET graphiql html and redirects', async () => {
+    it('GET graphiql html and redirects', async () => {
       const response = await axios.get(`${server.listenUrl}/graphiql`)
       expect(response.status).toEqual(200)
       expect(response.headers).toMatchObject({
@@ -234,7 +234,7 @@ describe('TestServer', () => {
       expect(response.data).toEqual('<html><body>Test</body></html>')
     })
 
-    test('POST /logs with authorization header exceeds max body size', async () => {
+    it('POST /logs with authorization header exceeds max body size', async () => {
       await expect(
         axios.post(
           `${server.listenUrl}/logs`,
@@ -249,7 +249,7 @@ describe('TestServer', () => {
           }
         )
         // Either 'write EPIPE' or 'read ECONNRESET' or 'socket hang up' can be thrown
-      ).rejects.toThrowError(/EPIPE|ECONNRESET|socket hang up/)
+      ).rejects.toThrow(/EPIPE|ECONNRESET|socket hang up/)
 
       expect(warnStub.callCount).toEqual(2)
       expect(warnStub.firstCall.args).toEqual([
@@ -271,7 +271,7 @@ describe('TestServer', () => {
       ])
     })
 
-    test('POST /logs without body', async () => {
+    it('POST /logs without body', async () => {
       await expect(
         axios.post(`${server.listenUrl}/logs`, undefined, {
           headers: {
@@ -279,7 +279,7 @@ describe('TestServer', () => {
             Authorization: 'Bearer 123'
           }
         })
-      ).rejects.toThrowError(/Request failed with status code 400/)
+      ).rejects.toThrow(/Request failed with status code 400/)
       expect(errorStub.callCount).toEqual(0)
       expect(warnStub.callCount).toEqual(1)
       expect(warnStub.getCall(0).args).toEqual([
@@ -295,7 +295,7 @@ describe('TestServer', () => {
       ])
     })
 
-    test('POST /double-parse fails', async () => {
+    it('POST /double-parse fails', async () => {
       await expect(
         axios.post(
           `${server.listenUrl}/double-parse?token=123`,
@@ -304,7 +304,7 @@ describe('TestServer', () => {
           },
           { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
         )
-      ).rejects.toThrowError(/Request failed with status code 400/)
+      ).rejects.toThrow(/Request failed with status code 400/)
       expect(errorStub.callCount).toEqual(0)
       expect(warnStub.callCount).toEqual(1)
       expect(warnStub.getCall(0).args).toEqual([
@@ -320,7 +320,7 @@ describe('TestServer', () => {
       ])
     })
 
-    test('/graphql middleware', async () => {
+    it('/graphql middleware', async () => {
       const response = await axios.get(`${server.listenUrl}/graphql`)
       expect(response.status).toEqual(200)
       expect(response.data).toEqual('Middleware response')
@@ -330,28 +330,28 @@ describe('TestServer', () => {
       expect(responsePost.data).toEqual('Middleware response')
     })
 
-    test('POST /new-vehicle-shard/:shardId/:vehicleId fails 404', async () => {
-      await expect(axios.post(`${server.listenUrl}/new-vehicle-shard/123/456?token=123`)).rejects.toThrowError(
+    it('POST /new-vehicle-shard/:shardId/:vehicleId fails 404', async () => {
+      await expect(axios.post(`${server.listenUrl}/new-vehicle-shard/123/456?token=123`)).rejects.toThrow(
         'Request failed with status code 404'
       )
     })
 
-    test('GET /logs fails 404', async () => {
-      await expect(axios.get(`${server.listenUrl}/logs?token=123`)).rejects.toThrowError(
+    it('GET /logs fails 404', async () => {
+      await expect(axios.get(`${server.listenUrl}/logs?token=123`)).rejects.toThrow(
         'Request failed with status code 404'
       )
     })
 
-    test('POST /logs/ with trailing slash fails', async () => {
+    it('POST /logs/ with trailing slash fails', async () => {
       await expect(
         axios.post(`${server.listenUrl}/logs/?token=123`, {
           message: 'Test message'
         })
-      ).rejects.toThrowError('Request failed with status code 404')
+      ).rejects.toThrow('Request failed with status code 404')
     })
 
-    test('GET with escaped backslashes doesnt throw error', async () => {
-      await expect(axios.get(`${server.listenUrl}///%5cexample.com`)).rejects.toThrowError(
+    it('GET with escaped backslashes doesnt throw error', async () => {
+      await expect(axios.get(`${server.listenUrl}///%5cexample.com`)).rejects.toThrow(
         'Request failed with status code 404'
       )
     })
