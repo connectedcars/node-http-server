@@ -1,8 +1,9 @@
+import EventEmitter from 'node:events'
+
 import log from '@connectedcars/logutil'
 import http from 'http'
 import net from 'net'
 import { URL } from 'url'
-import EventEmitter from 'node:events'
 
 const DEFAULT_MAX_BODY_IN_BYTES = 100 * 1024
 
@@ -118,7 +119,11 @@ export abstract class Server extends EventEmitter {
             } catch (e) {
               const errorHandler = this.resolveErrorHandler()
               const errorInfo = errorHandler(e, req, res)
-              this.emit('client-request-failed', { status: errorInfo.statusCode, errorResponse: errorInfo.result, stack: e.stack })
+              this.emit('client-request-failed', {
+                status: errorInfo.statusCode,
+                errorResponse: errorInfo.result,
+                stack: e.stack
+              })
               return this.respond(res, errorInfo.statusCode, errorInfo.result, errorInfo.contentType)
             }
           }
@@ -209,7 +214,7 @@ export abstract class Server extends EventEmitter {
       }
       errorResponse.message = error.message
     }
-        
+
     return { statusCode: status, result: errorResponse }
   }
 
@@ -342,5 +347,3 @@ export async function parseBodyFromRequest(
     })
   })
 }
-
-
