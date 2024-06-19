@@ -1,5 +1,5 @@
 {
-  "name": "@connectedcars/node-http-server",
+  "name": "@connectedcars/http-server",
   "version": "1.0.0",
   "description": "",
   "private": true,
