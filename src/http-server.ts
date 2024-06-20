@@ -48,7 +48,6 @@ export interface ServerOptions {
 }
 
 export class ServerError extends Error {
-  public static readonly Events: 'invalid-url' | 'client-request-failed'
   public status?: number
   public constructor(message: string, status?: number) {
     super(message)
@@ -57,6 +56,7 @@ export class ServerError extends Error {
 }
 
 export abstract class Server extends EventEmitter {
+  public static readonly Events: 'invalid-url' | 'client-request-failed'
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
