@@ -147,7 +147,7 @@ export abstract class Server extends EventEmitter {
     listener: Listener<{ statusCode: number; response: unknown; stack: string }>
   ): this
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public on(eventName: string, listener: (...args: any[]) => void): this {
+  public on(eventName: string, listener: Listener<any>): this {
     return super.on(eventName, listener)
   }
 
