@@ -48,6 +48,7 @@ export interface ServerOptions {
 }
 
 export class ServerError extends Error {
+  public static readonly Events: 'invalid-url' | 'client-request-failed'
   public status?: number
   public constructor(message: string, status?: number) {
     super(message)
@@ -132,6 +133,12 @@ export abstract class Server extends EventEmitter {
       const errorResponse: ErrorResponse = { error: 'not_found', message: 'Path not found' }
       this.respond(res, 404, errorResponse)
     })
+  }
+  public emit(eventName: typeof Server.Events, obj: string | object): boolean {
+    return super.emit(eventName, obj)
+  }
+  public on(eventName: typeof Server.Events, listener: () => void): this {
+    return super.on(eventName, listener)
   }
 
   public async start(): Promise<void> {
