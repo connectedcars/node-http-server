@@ -56,7 +56,6 @@ export class ServerError extends Error {
 type Listener<T> = (obj: T) => void
 
 export abstract class Server extends EventEmitter {
-  public static readonly Events: 'invalid-url' | 'client-request-failed'
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
