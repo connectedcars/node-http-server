@@ -55,7 +55,7 @@ export class ServerError extends Error {
 }
 type Listener<T> = (obj: T) => void
 
-export abstract class Server {
+export abstract class Server extends EventEmitter {
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
@@ -66,10 +66,8 @@ export abstract class Server {
     method?: string
   }[] = []
 
-  private listeners: Map<string, Listener<unknown>[]>
-
   public constructor(options: ServerOptions) {
-    this.listeners = new Map()
+    super()
     this.listenPort = options.listenPort
     this.baseUrl = options.baseUrl || 'http://localhost'
     const serverOptions = {}
@@ -141,14 +139,7 @@ export abstract class Server {
     obj: { statusCode: number; response: unknown; stack: string }
   ): boolean
   public emit(eventName: string, obj: string | object): boolean {
-    const listeners = this.listeners.get(eventName)
-    if (!listeners) {
-      return false
-    }
-    for (const listener of listeners) {
-      listener(obj)
-    }
-    return true
+    return super.emit(eventName, obj)
   }
   public on(eventName: 'invalid-url', listener: Listener<{ url: string; error: Error }>): this
   public on(
@@ -157,10 +148,7 @@ export abstract class Server {
   ): this
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   public on(eventName: string, listener: (...args: any[]) => void): this {
-    const listeners = this.listeners.get(eventName) ?? []
-    listeners.push(listener)
-    this.listeners.set(eventName, listeners)
-    return this
+    return super.on(eventName, listener)
   }
 
   public async start(): Promise<void> {
