@@ -54,6 +54,7 @@ export class ServerError extends Error {
     this.status = status
   }
 }
+type Listener<T> = (obj: T) => void
 
 export abstract class Server extends EventEmitter {
   public static readonly Events: 'invalid-url' | 'client-request-failed'
@@ -121,8 +122,8 @@ export abstract class Server extends EventEmitter {
               const errorHandler = this.resolveErrorHandler()
               const errorInfo = errorHandler(e, req, res)
               this.emit('client-request-failed', {
-                status: errorInfo.statusCode,
-                errorResponse: errorInfo.result,
+                statusCode: errorInfo.statusCode,
+                response: errorInfo.result,
                 stack: e.stack
               })
               return this.respond(res, errorInfo.statusCode, errorInfo.result, errorInfo.contentType)
@@ -134,10 +135,21 @@ export abstract class Server extends EventEmitter {
       this.respond(res, 404, errorResponse)
     })
   }
-  public emit(eventName: typeof Server.Events, obj: string | object): boolean {
+  public emit(eventName: 'invalid-url', obj: { url: string; error: Error }): boolean
+  public emit(
+    eventName: 'client-request-failed',
+    obj: { statusCode: number; response: unknown; stack: string }
+  ): boolean
+  public emit(eventName: string, obj: string | object): boolean {
     return super.emit(eventName, obj)
   }
-  public on(eventName: typeof Server.Events, listener: () => void): this {
+  public on(eventName: 'invalid-url', listener: Listener<{ url: string; error: Error }>): this
+  public on(
+    eventName: 'client-request-failed',
+    listener: Listener<{ statusCode: number; response: unknown; stack: string }>
+  ): this
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public on(eventName: string, listener: (...args: any[]) => void): this {
     return super.on(eventName, listener)
   }
 
