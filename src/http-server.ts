@@ -117,8 +117,7 @@ export abstract class Server extends EventEmitter {
                 )
               }
             } catch (e) {
-              const errorHandler = this.resolveErrorHandler()
-              const errorInfo = errorHandler(e, req, res)
+              const errorInfo = this.errorHandler(e, req, res)
               this.emit('client-request-failed', {
                 statusCode: errorInfo.statusCode,
                 response: errorInfo.result,
@@ -223,7 +222,8 @@ export abstract class Server extends EventEmitter {
     })
   }
 
-  protected errorHandler(error: Error): ReturnType<ErrorHandler> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected errorHandler(error: Error, req: http.IncomingMessage, res: http.ServerResponse): ReturnType<ErrorHandler> {
     let status = 500
     const errorResponse: ErrorResponse = { error: 'server_error', message: 'Something went wrong' }
     if (error instanceof ServerError) {
@@ -272,10 +272,6 @@ export abstract class Server extends EventEmitter {
     }
 
     return typeof handler.url === 'string' && pathname === handler.url
-  }
-
-  private resolveErrorHandler(): ErrorHandler {
-    return this.errorHandler
   }
 
   private respond(res: Response, statusCode: number, result: unknown, contentType?: ServerResult['contentType']): void {
