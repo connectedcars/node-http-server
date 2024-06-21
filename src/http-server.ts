@@ -141,6 +141,7 @@ export abstract class Server extends EventEmitter {
   public emit(eventName: string, obj: string | object): boolean {
     return super.emit(eventName, obj)
   }
+
   public on(eventName: 'invalid-url', listener: Listener<{ url: string; error: Error }>): this
   public on(
     eventName: 'client-request-failed',
