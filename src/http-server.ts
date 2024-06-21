@@ -1,4 +1,5 @@
 import log from '@connectedcars/logutil'
+import EventEmitter from 'events'
 import http from 'http'
 import net from 'net'
 import { URL } from 'url'
@@ -52,13 +53,13 @@ export class ServerError extends Error {
     this.status = status
   }
 }
+type Listener<T> = (obj: T) => void
 
-export abstract class Server {
+export abstract class Server extends EventEmitter {
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
   private server: http.Server
-  private errorHandler: ErrorHandler = defaultErrorHandler
   private handlerStack: {
     handler: RequestHandler
     url?: string | RegExp
@@ -66,6 +67,7 @@ export abstract class Server {
   }[] = []
 
   public constructor(options: ServerOptions) {
+    super()
     this.listenPort = options.listenPort
     this.baseUrl = options.baseUrl || 'http://localhost'
     const serverOptions = {}
@@ -79,7 +81,7 @@ export abstract class Server {
         try {
           parsedUrl = new URL(req.url, this.baseUrl)
         } catch (error) {
-          log.warn('Invalid URL', { url: req.url, error })
+          this.emit('invalid-url', { url: req.url, error })
           // Response with 404 if URL is invalid
           const errorResponse: ErrorResponse = { error: 'not_found', message: 'Path not found' }
           return this.respond(res, 404, errorResponse)
@@ -117,6 +119,11 @@ export abstract class Server {
             } catch (e) {
               const errorHandler = this.resolveErrorHandler()
               const errorInfo = errorHandler(e, req, res)
+              this.emit('client-request-failed', {
+                statusCode: errorInfo.statusCode,
+                response: errorInfo.result,
+                stack: e.stack
+              })
               return this.respond(res, errorInfo.statusCode, errorInfo.result, errorInfo.contentType)
             }
           }
@@ -125,6 +132,24 @@ export abstract class Server {
       const errorResponse: ErrorResponse = { error: 'not_found', message: 'Path not found' }
       this.respond(res, 404, errorResponse)
     })
+  }
+  public emit(eventName: 'invalid-url', obj: { url: string; error: Error }): boolean
+  public emit(
+    eventName: 'client-request-failed',
+    obj: { statusCode: number; response: unknown; stack: string }
+  ): boolean
+  public emit(eventName: string, obj: string | object): boolean {
+    return super.emit(eventName, obj)
+  }
+
+  public on(eventName: 'invalid-url', listener: Listener<{ url: string; error: Error }>): this
+  public on(
+    eventName: 'client-request-failed',
+    listener: Listener<{ statusCode: number; response: unknown; stack: string }>
+  ): this
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public on(eventName: string, listener: Listener<any>): this {
+    return super.on(eventName, listener)
   }
 
   public async start(): Promise<void> {
@@ -198,8 +223,17 @@ export abstract class Server {
     })
   }
 
-  protected setErrorHandler(handler: ErrorHandler): void {
-    this.errorHandler = handler
+  protected errorHandler(error: Error): ReturnType<ErrorHandler> {
+    let status = 500
+    const errorResponse: ErrorResponse = { error: 'server_error', message: 'Something went wrong' }
+    if (error instanceof ServerError) {
+      if (error.status) {
+        status = error.status
+      }
+      errorResponse.message = error.message
+    }
+
+    return { statusCode: status, result: errorResponse }
   }
 
   private addHandler(handler: RequestHandler, url?: string | RegExp, method?: string): void {
@@ -294,7 +328,6 @@ export async function parseBodyFromRequest(
   // Check Content-Type
   const contentType = req.headers['content-type']
   if (contentType === 'multipart/form-data') {
-    log.error('multipart/form-data is not supported', { url: req.url, method: req.method })
     throw new ServerError('multipart/form-data is not supported', 415)
   }
 
@@ -309,13 +342,11 @@ export async function parseBodyFromRequest(
       body.push(chunk)
       bodySize += chunk.length
       if (bodySize > maxBodySize) {
-        log.warn('Request entity too large', { maxBodySize })
         req.destroy()
         reject(new ServerError('Request Entity Too Large', 413))
       }
     })
     req.on('error', error => {
-      log.warn('Error reading request body', { error })
       req.destroy()
       reject(error)
     })
@@ -333,22 +364,4 @@ export async function parseBodyFromRequest(
       }
     })
   })
-}
-
-function defaultErrorHandler(error: Error): ReturnType<ErrorHandler> {
-  let status = 500
-  const errorResponse: ErrorResponse = { error: 'server_error', message: 'Something went wrong' }
-  if (error instanceof ServerError) {
-    if (error.status) {
-      status = error.status
-    }
-    errorResponse.message = error.message
-  }
-
-  if (status >= 500) {
-    log.error('Internal error ocurred in handling request', { status, errorResponse, stack: error.stack })
-  } else {
-    log.warn('Error ocurred in handling request', { status, errorResponse, stack: error.stack })
-  }
-  return { statusCode: status, result: errorResponse }
 }

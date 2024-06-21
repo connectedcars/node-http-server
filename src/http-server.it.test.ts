@@ -1,7 +1,4 @@
-import log from '@connectedcars/logutil'
-import { TypedSinonStub } from '@connectedcars/test'
 import axios from 'axios'
-import sinon from 'sinon'
 
 import {
   parseBodyFromRequest,
@@ -98,19 +95,9 @@ class TestServer extends Server {
 
 describe('TestServer', () => {
   let server: TestServer
-  let warnStub: TypedSinonStub<typeof log.critical>
-  let errorStub: TypedSinonStub<typeof log.error>
-
   beforeAll(async () => {
     server = new TestServer({ listenPort: 0 })
     await server.start()
-  })
-  beforeEach(() => {
-    errorStub = sinon.stub(log, 'error')
-    warnStub = sinon.stub(log, 'warn')
-  })
-  afterEach(() => {
-    sinon.restore()
   })
   afterAll(async () => {
     await server.stop()
@@ -250,25 +237,6 @@ describe('TestServer', () => {
         )
         // Either 'write EPIPE' or 'read ECONNRESET' or 'socket hang up' can be thrown
       ).rejects.toThrow(/EPIPE|ECONNRESET|socket hang up/)
-
-      expect(warnStub.callCount).toEqual(2)
-      expect(warnStub.firstCall.args).toEqual([
-        'Request entity too large',
-        {
-          maxBodySize: 200 * 1024
-        }
-      ])
-      expect(warnStub.secondCall.args).toEqual([
-        'Error ocurred in handling request',
-        {
-          errorResponse: {
-            error: 'server_error',
-            message: 'Request Entity Too Large'
-          },
-          stack: expect.any(String),
-          status: 413
-        }
-      ])
     })
 
     it('POST /logs without body', async () => {
@@ -280,19 +248,6 @@ describe('TestServer', () => {
           }
         })
       ).rejects.toThrow(/Request failed with status code 400/)
-      expect(errorStub.callCount).toEqual(0)
-      expect(warnStub.callCount).toEqual(1)
-      expect(warnStub.getCall(0).args).toEqual([
-        'Error ocurred in handling request',
-        {
-          errorResponse: {
-            error: 'server_error',
-            message: 'No body found in request'
-          },
-          stack: expect.any(String),
-          status: 400
-        }
-      ])
     })
 
     it('POST /double-parse fails', async () => {
@@ -305,19 +260,6 @@ describe('TestServer', () => {
           { headers: { 'Content-Type': 'application/json; charset=utf-8' } }
         )
       ).rejects.toThrow(/Request failed with status code 400/)
-      expect(errorStub.callCount).toEqual(0)
-      expect(warnStub.callCount).toEqual(1)
-      expect(warnStub.getCall(0).args).toEqual([
-        'Error ocurred in handling request',
-        {
-          errorResponse: {
-            error: 'server_error',
-            message: 'Request body was already parsed or request is not readable'
-          },
-          stack: expect.any(String),
-          status: 400
-        }
-      ])
     })
 
     it('/graphql middleware', async () => {
