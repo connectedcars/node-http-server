@@ -53,9 +53,11 @@ export class ServerError extends Error {
     this.status = status
   }
 }
-type Listener<T> = (obj: T) => void
 
-export abstract class Server extends EventEmitter {
+export abstract class Server extends EventEmitter<{
+  'client-request-failed': [{ statusCode: number; response: unknown; stack: string }]
+  'invalid-url': [{ url: string; error: Error }]
+}> {
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
@@ -131,24 +133,6 @@ export abstract class Server extends EventEmitter {
       const errorResponse: ErrorResponse = { error: 'not_found', message: 'Path not found' }
       this.respond(res, 404, errorResponse)
     })
-  }
-  public emit(eventName: 'invalid-url', obj: { url: string; error: Error }): boolean
-  public emit(
-    eventName: 'client-request-failed',
-    obj: { statusCode: number; response: unknown; stack: string }
-  ): boolean
-  public emit(eventName: string, obj: string | object): boolean {
-    return super.emit(eventName, obj)
-  }
-
-  public on(eventName: 'invalid-url', listener: Listener<{ url: string; error: Error }>): this
-  public on(
-    eventName: 'client-request-failed',
-    listener: Listener<{ statusCode: number; response: unknown; stack: string }>
-  ): this
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public on(eventName: string, listener: Listener<any>): this {
-    return super.on(eventName, listener)
   }
 
   public async start(): Promise<void> {
