@@ -1,5 +1,5 @@
 steps:
-  - name: "gcr.io/connectedcars-staging/cloudbuilder-wrapper.master"
+  - name: "europe-west1-docker.pkg.dev/connectedcars-build/cloudbuilder-wrapper/master"
     args:
       [
         "--build-timeout=20m",
