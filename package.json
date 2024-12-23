@@ -24,8 +24,8 @@
     "type": "git",
     "url": "git+https://github.com/connectedcars/node-http-server.git"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Connected Cars",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/connectedcars/node-http-server/issues"
   },
