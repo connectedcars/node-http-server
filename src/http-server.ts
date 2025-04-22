@@ -55,7 +55,7 @@ export class ServerError extends Error {
 }
 
 export abstract class Server extends EventEmitter<{
-  'client-request-failed': [{ statusCode: number; response: unknown; stack: string }]
+  'client-request-failed': [{ statusCode: number; response: unknown; stack: string; message: string }]
   'invalid-url': [{ url: string; error: Error }]
 }> {
   public listenUrl = ''
@@ -123,7 +123,8 @@ export abstract class Server extends EventEmitter<{
               this.emit('client-request-failed', {
                 statusCode: errorInfo.statusCode,
                 response: errorInfo.result,
-                stack: e.stack
+                stack: e.stack,
+                message: e.message
               })
               return this.respond(res, errorInfo.statusCode, errorInfo.result, errorInfo.contentType)
             }
