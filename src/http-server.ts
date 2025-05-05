@@ -54,10 +54,13 @@ export class ServerError extends Error {
   }
 }
 
-export abstract class Server extends EventEmitter<{
+export interface HttpServerEvents {
   'client-request-failed': [{ statusCode: number; response: unknown; stack: string; message: string }]
   'invalid-url': [{ url: string; error: Error }]
-}> {
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents> extends EventEmitter<E> {
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string

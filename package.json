@@ -34,7 +34,6 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
-    "axios": "^1.7.2",
     "@babel/cli": "7.24.6",
     "@babel/core": "7.24.6",
     "@babel/plugin-transform-class-properties": "7.24.6",
@@ -48,6 +47,7 @@
     "@types/jest": "29.5.12",
     "@typescript-eslint/eslint-plugin": "7.11.0",
     "@typescript-eslint/parser": "7.11.0",
+    "axios": "^1.7.2",
     "babel-jest": "29.7.0",
     "eslint": "8.56.0",
     "eslint-config-prettier": "9.1.0",
@@ -60,6 +60,7 @@
     "typescript": "5.4.5"
   },
   "dependencies": {
+    "@connectedcars/jwtutils": "^2.0.3",
     "@connectedcars/logutil": "^6.0.0"
   }
 }
