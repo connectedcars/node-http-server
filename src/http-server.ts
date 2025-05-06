@@ -20,8 +20,10 @@ export interface ServerResult {
 
 export type Query = Record<string, string | string[] | undefined>
 
+export type RequestHandlerResult = Promise<ServerResult | undefined | void>
+
 export interface RequestHandler<Req = Request, Res = Response> {
-  (req: Req, res: Res, pathname?: string, query?: Query): Promise<ServerResult | undefined | void>
+  (req: Req, res: Res, pathname?: string, query?: Query): RequestHandlerResult
 }
 
 export interface ErrorHandler {
@@ -55,18 +57,21 @@ export class ServerError extends Error {
 }
 
 export interface HttpServerEvents {
-  'client-request-failed': [{ statusCode: number; response: unknown; stack: string; message: string }]
-  'invalid-url': [{ url: string; error: Error }]
+  'client-request-failed': { statusCode: number; response: unknown; stack: string; message: string }[]
+  'invalid-url': { url: string; error: Error }[]
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents> extends EventEmitter<E> {
+export abstract class Server<
+  E extends HttpServerEvents = HttpServerEvents,
+  ServerRequest extends Request = Request,
+  ServerResponse extends Response = Response
+> extends EventEmitter<E | HttpServerEvents> {
   public listenUrl = ''
   private listenPort: number
   private baseUrl: string
   private server: http.Server
   private handlerStack: {
-    handler: RequestHandler
+    handler: RequestHandler<ServerRequest, ServerResponse>
     url?: string | RegExp
     method?: string
   }[] = []
@@ -111,7 +116,7 @@ export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents
           if (this.matchHandler(req, pathname, handlerInfo)) {
             const { handler } = handlerInfo
             try {
-              const handlerResult = await handler(req, res, pathname, query)
+              const handlerResult = await handler(req as ServerRequest, res as ServerResponse, pathname, query)
               // If result is undefined, continue to next handler
               if (handlerResult) {
                 return this.respond(
@@ -166,29 +171,32 @@ export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents
     return this.listenPort
   }
 
-  protected get(pathname: string | RegExp, handler: RequestHandler): void {
+  protected get(pathname: string | RegExp, handler: RequestHandler<ServerRequest, ServerResponse>): void {
     this.registerRequestHandler('GET', pathname, handler)
   }
 
-  protected post(pathname: string | RegExp, handler: RequestHandler): void {
+  protected post(pathname: string | RegExp, handler: RequestHandler<ServerRequest, ServerResponse>): void {
     this.registerRequestHandler('POST', pathname, handler)
   }
 
-  protected patch(pathname: string | RegExp, handler: RequestHandler): void {
+  protected patch(pathname: string | RegExp, handler: RequestHandler<ServerRequest, ServerResponse>): void {
     this.registerRequestHandler('PATCH', pathname, handler)
   }
 
-  protected put(pathname: string | RegExp, handler: RequestHandler): void {
+  protected put(pathname: string | RegExp, handler: RequestHandler<ServerRequest, ServerResponse>): void {
     this.registerRequestHandler('PUT', pathname, handler)
   }
 
-  protected delete(pathname: string | RegExp, handler: RequestHandler): void {
+  protected delete(pathname: string | RegExp, handler: RequestHandler<ServerRequest, ServerResponse>): void {
     this.registerRequestHandler('DELETE', pathname, handler)
   }
 
-  protected use(urlOrHandler: string | RegExp, middleware: RequestHandler): void
-  protected use(urlOrHandler: RequestHandler): void
-  protected use(urlOrHandler?: string | RegExp | RequestHandler, middleware?: RequestHandler): void {
+  protected use(urlOrHandler: string | RegExp, middleware: RequestHandler<ServerRequest, ServerResponse>): void
+  protected use(urlOrHandler: RequestHandler<ServerRequest, ServerResponse>): void
+  protected use(
+    urlOrHandler?: string | RegExp | RequestHandler<ServerRequest, ServerResponse>,
+    middleware?: RequestHandler<ServerRequest, ServerResponse>
+  ): void {
     if (typeof urlOrHandler === 'function') {
       this.addHandler(urlOrHandler)
     } else {
@@ -224,14 +232,18 @@ export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents
     return { statusCode: status, result: errorResponse }
   }
 
-  private addHandler(handler: RequestHandler, url?: string | RegExp, method?: string): void {
+  private addHandler(
+    handler: RequestHandler<ServerRequest, ServerResponse>,
+    url?: string | RegExp,
+    method?: string
+  ): void {
     this.handlerStack.push({ handler, url, method })
   }
 
   private registerRequestHandler(
     method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE',
     url: string | RegExp,
-    handler: RequestHandler
+    handler: RequestHandler<ServerRequest, ServerResponse>
   ): void {
     this.addHandler(handler, url, method)
   }
@@ -240,7 +252,7 @@ export abstract class Server<E extends Record<keyof E, any[]> = HttpServerEvents
     req: Request,
     pathname: string,
     handler: {
-      handler: RequestHandler
+      handler: RequestHandler<ServerRequest, ServerResponse>
       url?: string | RegExp
       method?: string
     }
