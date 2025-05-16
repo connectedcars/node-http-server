@@ -5,6 +5,8 @@ import * as graphqlHttp from 'graphql-http'
 
 import * as httpServer from '../http-server'
 import { isClientsideError } from './format-graphql-error'
+import { tryGetOperationName } from './graphql-operation-name'
+import { parseTraceInfoFromHeaders } from './parse-trace-info'
 
 export interface GraphQLServerOptions<Request> extends httpServer.ServerOptions {
   graphQLHandler: graphqlHttp.Handler<Request>
@@ -30,50 +32,6 @@ export interface GraphQLServerEvents<ErrorContext> extends httpServer.HttpServer
   'graphql-jwt-error': GraphQLServerEventValue<ErrorContext>[]
 }
 
-interface CloudTraceInfo {
-  trace?: string
-  spanId?: string
-  traceSampled?: boolean
-}
-
-function tryGetOperationName(req: httpServer.Request): string | null | undefined {
-  if (req.body && req.body.operationName) {
-    // From https://graphql.org/learn/serving-over-http/#post-request
-    return req.body.operationName as string
-  } else if (req.url) {
-    // Fallback to checking url
-    const opName = req.url.match(/\/graphql\?operationName=(\d+)/)
-    if (opName) {
-      return opName[0]
-    }
-  }
-  return undefined
-}
-
-function parseTraceInfoFromHeaders(req: httpServer.Request): CloudTraceInfo {
-  // https://cloud.google.com/trace/docs/trace-context#legacy-http-header
-  // X-Cloud-Trace-Context: TRACE_ID/SPAN_ID;o=OPTIONS
-  // Example: X-Cloud-Trace-Context: 105445aa7843/505445aa7843;o=1
-  // Another example: X-Cloud-Trace-Context: 105445aa7843/505445aa7843 // no options
-  const cloudTrace = req.headers['x-cloud-trace-context']
-
-  // According to node.js docs (https://nodejs.org/api/http.html#http_message_headers)
-  // 'x-cloud-trace-context' cannot be an array of values.
-  // set-cookie is always an array. Duplicates are added to the array.
-  // For duplicate cookie headers, the values are joined together with ; .
-  // For all other headers, the values are joined together with ,
-  if (!cloudTrace || Array.isArray(cloudTrace)) {
-    return {}
-  }
-
-  const [traceAndSpan, options] = cloudTrace.split(';')
-  const [trace, spanId] = traceAndSpan.split('/')
-  const traceSampled = options ? options === 'o=1' : false
-
-  // https://cloud.google.com/logging/docs/structured-logging#special-payload-fields
-  return { trace, spanId, traceSampled }
-}
-
 /**
  * A GraphQL http server implementation
  *
@@ -82,6 +40,7 @@ function parseTraceInfoFromHeaders(req: httpServer.Request): CloudTraceInfo {
  * @template [ErrorContext=GraphQLErrorContext]    A possibly extended error context to return from getErrorContext
  *
  * @emits GraphQLServer#graphql-error
+ * @emits GraphQLServer#graphql-jwt-error
  */
 export abstract class GraphQLServer<
   GraphQLRequest extends httpServer.Request = httpServer.Request,
@@ -105,9 +64,7 @@ export abstract class GraphQLServer<
   }
 
   /**
-   * GraphQL handler for post requests
-   *
-   * @emits GraphQLServer#graphql-error
+   * GraphQL post request handler
    */
   public async graphQLPostHandler(req: httpServer.Request, res: httpServer.Response): httpServer.RequestHandlerResult {
     // Body could have been parsed by the upload handler if it was used (when Content-type is multipart/form-data)
@@ -122,7 +79,7 @@ export abstract class GraphQLServer<
     const graphQLRequest = Object.assign(req, {
       method: req.method as string,
       url: req.url as string,
-      body: req.body as Record<string, unknown>, // TODO: Make a type for this, we know what it is at this point
+      body: req.body as Record<string, unknown>,
       raw: req,
       context: null
     }) as unknown as graphqlHttp.Request<GraphQLRequest, null>
@@ -130,7 +87,6 @@ export abstract class GraphQLServer<
     const [bodyInfo, init] = await this.graphQLHandler(graphQLRequest)
     const body = JSON.parse(bodyInfo as string)
 
-    // Define out of GraphQL spec errors and status codes
     if (body?.errors) {
       return { statusCode: this.statusCodeForErrors(body.errors, req, res), result: body }
     }
@@ -138,6 +94,9 @@ export abstract class GraphQLServer<
     return { statusCode: init.status, result: body }
   }
 
+  /**
+   * Get the base error context information. To be extended by implementing classes
+   */
   protected getBaseErrorContext(req: httpServer.Request): ErrorContext {
     const traceInfo = parseTraceInfoFromHeaders(req)
 
@@ -153,6 +112,25 @@ export abstract class GraphQLServer<
     return context
   }
 
+  protected handleStatusCode(error: GraphQLFormattedError, _req: httpServer.Request, res: httpServer.Response): number {
+    if (isClientsideError(error)) {
+      return 400
+    }
+
+    return res.statusCode
+  }
+
+  /**
+   * Handle errors. To be extended by implementing classes
+   */
+  protected errorHandler(
+    error: Error,
+    req: GraphQLRequest,
+    res: httpServer.Response
+  ): ReturnType<httpServer.ErrorHandler> {
+    return this.graphQLErrorHandler(error, req, res)
+  }
+
   protected graphQLErrorHandler(
     error: Error,
     req: GraphQLRequest,
@@ -165,22 +143,6 @@ export abstract class GraphQLServer<
     }
 
     return this.handleUnhandledGraphQLError(error, req, res)
-  }
-
-  protected errorHandler(
-    error: Error,
-    req: GraphQLRequest,
-    res: httpServer.Response
-  ): ReturnType<httpServer.ErrorHandler> {
-    return this.graphQLErrorHandler(error, req, res)
-  }
-
-  protected handleStatusCode(error: GraphQLFormattedError, _req: httpServer.Request, res: httpServer.Response): number {
-    if (isClientsideError(error)) {
-      return 400
-    }
-
-    return res.statusCode
   }
 
   private handleJwtVerifyError(
@@ -214,6 +176,7 @@ export abstract class GraphQLServer<
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
+    // TODO: Change error message
     this.emit('graphql-error', { errorMessage: 'unhandled-error', context: this.getErrorContext(req), error })
 
     return {
@@ -232,8 +195,8 @@ export abstract class GraphQLServer<
     let responseStatusCode = 500
     const statusCodes = []
 
-    for (const err of errors) {
-      const errorStatusCode = this.handleStatusCode(err, req, res)
+    for (const error of errors) {
+      const errorStatusCode = this.handleStatusCode(error, req, res)
       statusCodes.push(errorStatusCode)
 
       if (errorStatusCode >= 400) {
@@ -251,5 +214,8 @@ export abstract class GraphQLServer<
     return responseStatusCode
   }
 
+  /**
+   * Abstract method for getting the error context. To be extended by implementing classes
+   */
   protected abstract getErrorContext(req: GraphQLRequest): ErrorContext
 }

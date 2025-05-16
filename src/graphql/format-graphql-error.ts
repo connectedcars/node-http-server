@@ -24,3 +24,19 @@ export function isClientsideError(error: Error | GraphQLError | GraphQLFormatted
 
   return false
 }
+
+export function formatGenericError(err: Error | GraphQLError): GraphQLFormattedError {
+  const isAGraphQLError = isGraphQLError(err)
+
+  const error: GraphQLFormattedError = {
+    //type: 'server-error',
+    message: 'Something went wrong.',
+    locations: isAGraphQLError ? err.locations : undefined,
+    path: isAGraphQLError ? err.path : undefined,
+    extensions: {
+      errorKind: isGraphQLError(err) ? 'GraphQLError' : 'Error'
+    }
+  }
+
+  return error
+}

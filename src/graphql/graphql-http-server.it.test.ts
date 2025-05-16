@@ -62,6 +62,7 @@ class TestServer extends GraphQLServer<ExtendedRequest, Response, ExtendedGraphQ
   }
 }
 
+// TODO: Test graphql operation name
 describe('graphql-http-server', () => {
   let server: TestServer
   let events: {
@@ -113,10 +114,9 @@ describe('graphql-http-server', () => {
         const parsedBody = req.body as Record<string, unknown>
 
         return {
-          query: parsedBody?.query as string,
-          variables:
-            typeof parsedBody?.variables === 'string' ? JSON.parse(parsedBody?.variables) : parsedBody?.variables,
-          operationName: parsedBody?.operationName as string
+          query: parsedBody.query as string,
+          variables: typeof parsedBody.variables === 'string' ? JSON.parse(parsedBody.variables) : parsedBody.variables,
+          operationName: parsedBody.operationName as string
         }
       }
     })
