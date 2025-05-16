@@ -93,7 +93,7 @@ class TestServer extends Server {
   }
 }
 
-describe('TestServer', () => {
+describe('http-server', () => {
   let server: TestServer
   beforeAll(async () => {
     server = new TestServer({ listenPort: 0 })
