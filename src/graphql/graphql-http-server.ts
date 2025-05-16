@@ -2,15 +2,12 @@ import { utils } from '@connectedcars/backend'
 import { JwtVerifyError } from '@connectedcars/jwtutils'
 import { GraphQLFormattedError } from 'graphql'
 import * as graphqlHttp from 'graphql-http'
-import http from 'http'
 
-import { type FileSizeLimit, getFormDataFromRequest, type ParsedMultiPartData } from './form-data-from-request'
+import * as httpServer from '../http-server'
 import { isClientsideError } from './format-graphql-error'
-import * as httpServer from './http-server'
 
-export interface GraphQLServerOptions extends httpServer.ServerOptions {
-  graphQLHandler: ReturnType<typeof graphqlHttp.createHandler>
-  fileSizeLimit?: FileSizeLimit
+export interface GraphQLServerOptions<Request> extends httpServer.ServerOptions {
+  graphQLHandler: graphqlHttp.Handler<Request>
 }
 
 export interface GraphQLErrorContext {
@@ -22,16 +19,15 @@ export interface GraphQLErrorContext {
   url?: string
 }
 
-export interface GraphQLServerEvents<ErrorContext> extends httpServer.HttpServerEvents {
-  'graphql-error': { errorMessage: string; context: ErrorContext; error?: Error }[]
+export interface GraphQLServerEventValue<ErrorContext> {
+  errorMessage: string
+  context: ErrorContext
+  error?: Error
 }
 
-export type FileInfo = Omit<ParsedMultiPartData, 'query' | 'variables' | 'operationName'>
-
-export interface BaseGraphQLResponse extends httpServer.Response {
-  locals: {
-    file?: FileInfo
-  }
+export interface GraphQLServerEvents<ErrorContext> extends httpServer.HttpServerEvents {
+  'graphql-error': GraphQLServerEventValue<ErrorContext>[]
+  'graphql-jwt-error': GraphQLServerEventValue<ErrorContext>[]
 }
 
 interface CloudTraceInfo {
@@ -82,66 +78,30 @@ function parseTraceInfoFromHeaders(req: httpServer.Request): CloudTraceInfo {
  * A GraphQL http server implementation
  *
  * @template [GraphQLRequest=httpServer.Request]   The type of the GraphQL request passed through the later middleware and handlers
- * @template [GraphQLResponse=BaseGraphQLResponse] The type of GraphQL responses
+ * @template [GraphQLResponse=httpServer.Response] The type of GraphQL responses
  * @template [ErrorContext=GraphQLErrorContext]    A possibly extended error context to return from getErrorContext
  *
  * @emits GraphQLServer#graphql-error
  */
 export abstract class GraphQLServer<
   GraphQLRequest extends httpServer.Request = httpServer.Request,
-  GraphQLResponse extends BaseGraphQLResponse = BaseGraphQLResponse,
+  GraphQLResponse extends httpServer.Response = httpServer.Response,
   ErrorContext extends GraphQLErrorContext = GraphQLErrorContext
 > extends httpServer.Server<GraphQLServerEvents<ErrorContext>, GraphQLRequest, GraphQLResponse> {
   // Regex that matches /graphql and /graphql/
   // /graphql/ is supported for backwards compatibility and using a redirect with 308 causes issues with some clients
   public static readonly GRAPHQL_ENDPOINT_REGEX = /^\/graphql\/?$/
 
-  private graphQLHandler: GraphQLServerOptions['graphQLHandler']
-  private fileSizeLimit: FileSizeLimit
+  private static readonly DEFAULT_MAX_BODY_SIZE = 750 * 1024
+
+  private graphQLHandler: GraphQLServerOptions<GraphQLRequest>['graphQLHandler']
   private maxBodySize: number
 
-  public constructor(options: GraphQLServerOptions) {
+  public constructor(options: GraphQLServerOptions<GraphQLRequest>) {
     super(options)
 
     this.graphQLHandler = options.graphQLHandler
-    this.fileSizeLimit = { maxBytes: 5 * 1024 * 1024, maxMegabytes: 5, ...options.fileSizeLimit }
-    this.maxBodySize = options.maxBodySize ?? 750 * 1024
-  }
-
-  /**
-   * GraphQL middlware for handling multipart form requests
-   *
-   * @emits GraphQLServer#graphql-error
-   */
-  public async graphQLMiddleware(req: GraphQLRequest, res: GraphQLResponse): httpServer.RequestHandlerResult {
-    if (req.headers['content-type']?.includes('multipart')) {
-      req.body = Object.create(null)
-
-      try {
-        const file = await getFormDataFromRequest(req, this.fileSizeLimit)
-
-        // Since the body is a multipart form, we need to separate the graphql
-        // part to form a body
-        const { operationName, query, variables, ...fileInfo } = file
-
-        req.body!.operationName = operationName
-        req.body!.query = query
-        req.body!.variables = variables
-
-        res.locals.file = fileInfo
-      } catch (error) {
-        this.emit('graphql-error', {
-          errorMessage: 'Failed to parse form data from request',
-          context: this.getErrorContext(req),
-          error
-        })
-
-        return {
-          statusCode: 400,
-          result: { errors: [{ type: 'multipart-parse-error', message: 'Invalid multipart form' }] }
-        }
-      }
-    }
+    this.maxBodySize = options.maxBodySize ?? GraphQLServer.DEFAULT_MAX_BODY_SIZE
   }
 
   /**
@@ -162,10 +122,10 @@ export abstract class GraphQLServer<
     const graphQLRequest = Object.assign(req, {
       method: req.method as string,
       url: req.url as string,
-      body: req.body as Record<string, unknown> | string | Buffer,
+      body: req.body as Record<string, unknown>, // TODO: Make a type for this, we know what it is at this point
       raw: req,
       context: null
-    })
+    }) as unknown as graphqlHttp.Request<GraphQLRequest, null>
 
     const [bodyInfo, init] = await this.graphQLHandler(graphQLRequest)
     const body = JSON.parse(bodyInfo as string)
@@ -196,7 +156,7 @@ export abstract class GraphQLServer<
   protected graphQLErrorHandler(
     error: Error,
     req: GraphQLRequest,
-    res: http.ServerResponse
+    res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
     if (error instanceof JwtVerifyError) {
       return this.handleJwtVerifyError(error, req, res)
@@ -210,16 +170,16 @@ export abstract class GraphQLServer<
   protected errorHandler(
     error: Error,
     req: GraphQLRequest,
-    res: http.ServerResponse
+    res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
     return this.graphQLErrorHandler(error, req, res)
   }
 
-  protected isClientsideError(err: Error): boolean {
-    return isClientsideError(err)
-  }
+  protected handleStatusCode(error: GraphQLFormattedError, _req: httpServer.Request, res: httpServer.Response): number {
+    if (isClientsideError(error)) {
+      return 400
+    }
 
-  protected handleStatusCode(_err: GraphQLFormattedError, _req: httpServer.Request, res: httpServer.Response): number {
     return res.statusCode
   }
 
@@ -227,7 +187,7 @@ export abstract class GraphQLServer<
     error: JwtVerifyError,
     req: GraphQLRequest,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _res: http.ServerResponse
+    _res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
     let errorMessage = ''
 
@@ -237,7 +197,7 @@ export abstract class GraphQLServer<
       errorMessage = `Failed with: ${error.message}`
     }
 
-    this.emit('graphql-error', { errorMessage, context: this.getErrorContext(req), error })
+    this.emit('graphql-jwt-error', { errorMessage, context: this.getErrorContext(req), error })
 
     // Try to emulate the error structure of formatTypeError
     return {
@@ -252,7 +212,7 @@ export abstract class GraphQLServer<
     error: Error,
     req: GraphQLRequest,
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _res: http.ServerResponse
+    _res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
     this.emit('graphql-error', { errorMessage: 'unhandled-error', context: this.getErrorContext(req), error })
 
@@ -271,6 +231,7 @@ export abstract class GraphQLServer<
   ): number {
     let responseStatusCode = 500
     const statusCodes = []
+
     for (const err of errors) {
       const errorStatusCode = this.handleStatusCode(err, req, res)
       statusCodes.push(errorStatusCode)

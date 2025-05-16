@@ -1,16 +1,10 @@
 import { JwtVerifyError } from '@connectedcars/jwtutils'
-import axios from 'axios'
+import axios, { AxiosRequestConfig } from 'axios'
 import { GraphQLFieldConfig, GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLSchema } from 'graphql'
 import * as graphqlHttp from 'graphql-http'
 
-import {
-  BaseGraphQLResponse,
-  GraphQLErrorContext,
-  GraphQLServer,
-  GraphQLServerEvents,
-  GraphQLServerOptions
-} from './graphql-http-server'
-import { Request, ServerError } from './http-server'
+import { type Request, type Response, ServerError } from '../http-server'
+import { GraphQLErrorContext, GraphQLServer, GraphQLServerEvents, GraphQLServerOptions } from './graphql-http-server'
 
 interface ExtendedRequest extends Request {
   user?: { id: number | null }
@@ -20,8 +14,8 @@ interface ExtendedGraphQLErrorContext extends GraphQLErrorContext {
   userId: number | null
 }
 
-class TestServer extends GraphQLServer<ExtendedRequest, BaseGraphQLResponse, ExtendedGraphQLErrorContext> {
-  public constructor(options: GraphQLServerOptions) {
+class TestServer extends GraphQLServer<ExtendedRequest, Response, ExtendedGraphQLErrorContext> {
+  public constructor(options: GraphQLServerOptions<ExtendedRequest>) {
     super(options)
 
     this.get('/readiness', async () => {
@@ -57,7 +51,6 @@ class TestServer extends GraphQLServer<ExtendedRequest, BaseGraphQLResponse, Ext
       throw new ServerError('Unauthorized', 401)
     })
 
-    this.use(this.graphQLMiddleware.bind(this))
     this.post(GraphQLServer.GRAPHQL_ENDPOINT_REGEX, this.graphQLPostHandler.bind(this))
   }
 
@@ -75,7 +68,7 @@ describe('graphql-http-server', () => {
     type: string
     eventArgs: GraphQLServerEvents<GraphQLErrorContext>[keyof GraphQLServerEvents<GraphQLErrorContext>][number]
   }[] = []
-  let graphQLHandler: GraphQLServerOptions['graphQLHandler']
+  let graphQLHandler: GraphQLServerOptions<ExtendedRequest>['graphQLHandler']
 
   const TestQueryOutputType = new GraphQLObjectType({
     name: 'TestOutput',
@@ -103,8 +96,31 @@ describe('graphql-http-server', () => {
 
   const schema = new GraphQLSchema({ query })
 
+  const validQueryString = `query TestQuery {
+    testQuery {
+      id
+    }
+  }`
+
+  const validAuthHeaders: AxiosRequestConfig['headers'] = {
+    Authorization: 'Bearer 123'
+  }
+
   beforeAll(async () => {
-    graphQLHandler = graphqlHttp.createHandler({ schema })
+    graphQLHandler = graphqlHttp.createHandler({
+      schema,
+      parseRequestParams: req => {
+        const parsedBody = req.body as Record<string, unknown>
+
+        return {
+          query: parsedBody?.query as string,
+          variables:
+            typeof parsedBody?.variables === 'string' ? JSON.parse(parsedBody?.variables) : parsedBody?.variables,
+          operationName: parsedBody?.operationName as string
+        }
+      }
+    })
+
     server = new TestServer({ listenPort: 0, graphQLHandler })
 
     server.on('client-request-failed', eventArgs => {
@@ -113,6 +129,10 @@ describe('graphql-http-server', () => {
 
     server.on('graphql-error', eventArgs => {
       events.push({ type: 'graphql-error', eventArgs })
+    })
+
+    server.on('graphql-jwt-error', eventArgs => {
+      events.push({ type: 'graphql-jwt-error', eventArgs })
     })
 
     server.on('invalid-url', eventArgs => {
@@ -142,91 +162,30 @@ describe('graphql-http-server', () => {
   })
 
   it('posts to graphql endpoint', async () => {
-    const query = `query TestQuery {
-  testQuery {
-    id
-  }
-}`
-
     const data = {
       operationName: 'TestQuery',
-      query,
+      query: validQueryString,
       variables: {}
     }
 
-    await expect(axios.post(`${server.listenUrl}/graphql`, data)).resolves.toMatchObject({
-      status: 200,
-      data: {
+    await expect(axios.post(`${server.listenUrl}/graphql`, data, { headers: validAuthHeaders })).resolves.toMatchObject(
+      {
+        status: 200,
         data: {
-          testQuery: {
-            id: '1'
+          data: {
+            testQuery: {
+              id: '1'
+            }
           }
         }
       }
-    })
+    )
 
     expect(events).toMatchObject([])
   })
 
-  it('handles file upload via multipart form-data', async () => {})
-
-  it('handles file upload which is too small via multipart form-data', async () => {
-    const query = `query TestQuery {
-  testQuery {
-    id
-  }
-}`
-
-    const data = {
-      operationName: 'TestQuery',
-      query,
-      variables: {}
-    }
-
-    const formData = new FormData()
-
-    formData.append('operationName', data.operationName)
-    formData.append('query', data.query)
-    formData.append('variables', JSON.stringify(data.variables))
-    formData.append('file', new Blob([Buffer.from('this is file contents')]), 'file.jpg')
-
-    await expect(axios.post(`${server.listenUrl}/graphql`, formData)).rejects.toMatchObject({
-      status: 400,
-      response: {
-        data: {
-          errors: [
-            {
-              type: 'multipart-parse-error',
-              message: 'Invalid multipart form'
-            }
-          ]
-        }
-      }
-    })
-
-    expect(events).toMatchObject([
-      {
-        eventArgs: {
-          context: {
-            ip: '::1',
-            operationName: undefined,
-            referrer: undefined,
-            url: '/graphql',
-            userAgent: 'axios/1.9.0',
-            userId: null
-          },
-          // error: [expect.any(Error)],
-          errorMessage: 'Failed to parse form data from request'
-        },
-        type: 'graphql-error'
-      }
-    ])
-  })
-
-  it('fails to handle files when the file goes before the fields', async () => {})
-
   it('fails getting graphql with an unknown query', async () => {
-    const query = `query TestQuery {
+    const queryWithSyntaxError = `query TestQuery {
   nopeQuery {
     id
   }
@@ -234,13 +193,13 @@ describe('graphql-http-server', () => {
 
     const data = {
       operationName: 'TestQuery',
-      query,
+      query: queryWithSyntaxError,
       variables: {}
     }
 
-    await expect(axios.post(`${server.listenUrl}/graphql`, data)).rejects.toMatchObject({
-      status: 500, // TODO: Should this be 500?
-      message: 'Request failed with status code 500',
+    await expect(axios.post(`${server.listenUrl}/graphql`, data, { headers: validAuthHeaders })).rejects.toMatchObject({
+      status: 400,
+      message: 'Request failed with status code 400',
       response: {
         data: {
           errors: [
@@ -269,9 +228,9 @@ describe('graphql-http-server', () => {
       variables: {}
     }
 
-    await expect(axios.post(`${server.listenUrl}/graphql`, data)).rejects.toMatchObject({
-      status: 500, // TODO: Should this be 500?
-      message: 'Request failed with status code 500',
+    await expect(axios.post(`${server.listenUrl}/graphql`, data, { headers: validAuthHeaders })).rejects.toMatchObject({
+      status: 400,
+      message: 'Request failed with status code 400',
       response: {
         data: {
           errors: [
@@ -301,7 +260,7 @@ describe('graphql-http-server', () => {
 
     expect(events).toMatchObject([
       {
-        type: 'graphql-error',
+        type: 'graphql-jwt-error',
         eventArgs: {
           errorMessage: 'Failed with: Oh noes',
           context: {
@@ -339,7 +298,7 @@ describe('graphql-http-server', () => {
 
     expect(events).toMatchObject([
       {
-        type: 'graphql-error',
+        type: 'graphql-jwt-error',
         eventArgs: {
           errorMessage: 'Failed with: Failed to verify again',
           context: {

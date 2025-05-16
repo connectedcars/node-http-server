@@ -64,9 +64,6 @@
     "@connectedcars/backend": "^8.65.4",
     "@connectedcars/jwtutils": "^2.0.3",
     "@connectedcars/logutil": "^6.0.0",
-    "@types/busboy": "^1.5.4",
-    "busboy": "^1.6.0",
-    "graphql-http": "^1.22.4",
-    "magic-bytes.js": "^1.12.1"
+    "graphql-http": "^1.22.4"
   }
 }
