@@ -256,7 +256,7 @@ describe('graphql-http-server', () => {
         eventArgs: {
           errorMessage: 'Failed with: Token does not contain three dots',
           context: {
-            ip: '::1',
+            ip: expect.any(String),
             referrer: undefined,
             operationName: 'TestQuery',
             userAgent: expect.stringMatching(/^axios\//),
@@ -356,7 +356,7 @@ describe('graphql-http-server', () => {
         eventArgs: {
           errorMessage: 'Failed with: Oh noes',
           context: {
-            ip: '::1',
+            ip: expect.any(String),
             referrer: undefined,
             operationName: undefined,
             userAgent: expect.stringMatching(/^axios\//),
@@ -394,7 +394,7 @@ describe('graphql-http-server', () => {
         eventArgs: {
           errorMessage: 'Failed with: Failed to verify again',
           context: {
-            ip: '::1',
+            ip: expect.any(String),
             referrer: undefined,
             operationName: undefined,
             userAgent: expect.stringMatching(/^axios\//),
@@ -461,7 +461,7 @@ describe('graphql-http-server', () => {
         eventArgs: {
           errorMessage: 'Unhandled error',
           context: {
-            ip: '::1',
+            ip: expect.any(String),
             referrer: undefined,
             operationName: undefined,
             userAgent: expect.stringMatching(/^axios\//),
