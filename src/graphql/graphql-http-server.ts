@@ -66,8 +66,8 @@ export abstract class GraphQLServer<
   /**
    * GraphQL post request handler
    */
-  public async graphQLPostHandler(req: httpServer.Request, res: httpServer.Response): httpServer.RequestHandlerResult {
-    // Body could have been parsed by the upload handler if it was used (when Content-type is multipart/form-data)
+  public async graphQLPostHandler(req: GraphQLRequest, res: GraphQLResponse): httpServer.RequestHandlerResult {
+    // Body could already have been parsed by middleware
     if (!req.body) {
       // Parse body if it is not already parsed
       const body = await httpServer.parseBodyFromRequest(req, this.maxBodySize)
@@ -95,24 +95,20 @@ export abstract class GraphQLServer<
   }
 
   /**
-   * Get the base error context information. To be extended by implementing classes
+   * Get the base error context information to be extended by implementing classes
    */
-  protected getBaseErrorContext(req: httpServer.Request): ErrorContext {
-    const traceInfo = parseTraceInfoFromHeaders(req)
-
-    const context = {
+  protected getBaseErrorContext(req: GraphQLRequest): ErrorContext {
+    return {
       ip: utils.getIp(req),
       referrer: req.headers['referer'],
       operationName: tryGetOperationName(req),
       userAgent: req.headers['user-agent'],
       url: req.url,
-      ...traceInfo
+      ...parseTraceInfoFromHeaders(req)
     } as ErrorContext
-
-    return context
   }
 
-  protected handleStatusCode(error: GraphQLFormattedError, _req: httpServer.Request, res: httpServer.Response): number {
+  protected handleStatusCode(error: GraphQLFormattedError, _req: GraphQLRequest, res: GraphQLResponse): number {
     if (isClientsideError(error)) {
       return 400
     }
@@ -137,20 +133,15 @@ export abstract class GraphQLServer<
     res: httpServer.Response
   ): ReturnType<httpServer.ErrorHandler> {
     if (error instanceof JwtVerifyError) {
-      return this.handleJwtVerifyError(error, req, res)
+      return this.handleJwtVerifyError(error, req)
     } else if (error instanceof httpServer.ServerError) {
       return super.errorHandler(error, req, res)
     }
 
-    return this.handleUnhandledGraphQLError(error, req, res)
+    return this.handleUnhandledGraphQLError(error, req)
   }
 
-  private handleJwtVerifyError(
-    error: JwtVerifyError,
-    req: GraphQLRequest,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _res: httpServer.Response
-  ): ReturnType<httpServer.ErrorHandler> {
+  private handleJwtVerifyError(error: JwtVerifyError, req: GraphQLRequest): ReturnType<httpServer.ErrorHandler> {
     let errorMessage = ''
 
     if (error.innerError) {
@@ -161,7 +152,6 @@ export abstract class GraphQLServer<
 
     this.emit('graphql-jwt-error', { errorMessage, context: this.getErrorContext(req), error })
 
-    // Try to emulate the error structure of formatTypeError
     return {
       statusCode: 401,
       result: {
@@ -170,14 +160,8 @@ export abstract class GraphQLServer<
     }
   }
 
-  private handleUnhandledGraphQLError(
-    error: Error,
-    req: GraphQLRequest,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    _res: httpServer.Response
-  ): ReturnType<httpServer.ErrorHandler> {
-    // TODO: Change error message
-    this.emit('graphql-error', { errorMessage: 'unhandled-error', context: this.getErrorContext(req), error })
+  private handleUnhandledGraphQLError(error: Error, req: GraphQLRequest): ReturnType<httpServer.ErrorHandler> {
+    this.emit('graphql-error', { errorMessage: 'Unhandled error', context: this.getErrorContext(req), error })
 
     return {
       statusCode: 500,
@@ -187,11 +171,7 @@ export abstract class GraphQLServer<
     }
   }
 
-  private statusCodeForErrors(
-    errors: GraphQLFormattedError[],
-    req: httpServer.Request,
-    res: httpServer.Response
-  ): number {
+  private statusCodeForErrors(errors: GraphQLFormattedError[], req: GraphQLRequest, res: GraphQLResponse): number {
     let responseStatusCode = 500
     const statusCodes = []
 

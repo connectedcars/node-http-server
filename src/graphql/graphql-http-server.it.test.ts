@@ -1,10 +1,15 @@
 import { JwtVerifyError } from '@connectedcars/jwtutils'
-import axios, { AxiosRequestConfig } from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { GraphQLFieldConfig, GraphQLID, GraphQLNonNull, GraphQLObjectType, GraphQLSchema } from 'graphql'
 import * as graphqlHttp from 'graphql-http'
 
 import { type Request, type Response, ServerError } from '../http-server'
-import { GraphQLErrorContext, GraphQLServer, GraphQLServerEvents, GraphQLServerOptions } from './graphql-http-server'
+import {
+  type GraphQLErrorContext,
+  GraphQLServer,
+  type GraphQLServerEvents,
+  type GraphQLServerOptions
+} from './graphql-http-server'
 
 interface ExtendedRequest extends Request {
   user?: { id: number | null }
@@ -40,11 +45,13 @@ class TestServer extends GraphQLServer<ExtendedRequest, Response, ExtendedGraphQ
 
     // Register authorization middleware
     this.use(async (req, _res, _pathname, query) => {
-      if (req.headers.authorization === 'Bearer 123') {
+      if (req.headers.authorization?.split('.').length !== 3) {
+        throw new JwtVerifyError('Token does not contain three dots')
+      } else if (req.headers.authorization === 'Bearer 1.2.3') {
         return
-      } else if (query?.token === '123') {
+      } else if (query?.token === '1.2.3') {
         return
-      } else if (Array.isArray(query?.token) && query?.token.includes('123')) {
+      } else if (Array.isArray(query?.token) && query?.token.includes('1.2.3')) {
         return
       }
 
@@ -62,7 +69,6 @@ class TestServer extends GraphQLServer<ExtendedRequest, Response, ExtendedGraphQ
   }
 }
 
-// TODO: Test graphql operation name
 describe('graphql-http-server', () => {
   let server: TestServer
   let events: {
@@ -104,7 +110,7 @@ describe('graphql-http-server', () => {
   }`
 
   const validAuthHeaders: AxiosRequestConfig['headers'] = {
-    Authorization: 'Bearer 123'
+    Authorization: 'Bearer 1.2.3'
   }
 
   beforeAll(async () => {
@@ -182,6 +188,92 @@ describe('graphql-http-server', () => {
     )
 
     expect(events).toMatchObject([])
+  })
+
+  it('posts to graphql endpoint with invalid token', async () => {
+    const data = {
+      operationName: 'TestQuery',
+      query: validQueryString,
+      variables: {}
+    }
+
+    await expect(
+      axios.post(`${server.listenUrl}/graphql`, data, { headers: { Authorization: 'Bearer 4.5.6' } })
+    ).rejects.toMatchObject({
+      status: 401,
+      response: {
+        data: {
+          error: 'server_error',
+          message: 'Unauthorized'
+        }
+      }
+    })
+
+    expect(events).toMatchObject([
+      {
+        eventArgs: {
+          message: 'Unauthorized',
+          response: {
+            error: 'server_error',
+            message: 'Unauthorized'
+          },
+          stack: expect.any(String),
+          statusCode: 401
+        },
+        type: 'client-request-failed'
+      }
+    ])
+  })
+
+  it('posts to graphql endpoint with invalid token (missing dots)', async () => {
+    const data = {
+      operationName: 'TestQuery',
+      query: validQueryString,
+      variables: {}
+    }
+
+    await expect(
+      axios.post(`${server.listenUrl}/graphql?operationName=TestQuery`, data, {
+        headers: { Authorization: 'Bearer 1.23' }
+      })
+    ).rejects.toMatchObject({
+      status: 401,
+      response: {
+        data: {
+          errors: [
+            {
+              message: 'Failed with: Token does not contain three dots',
+              type: 'auth-error'
+            }
+          ]
+        }
+      }
+    })
+
+    expect(events).toMatchObject([
+      {
+        type: 'graphql-jwt-error',
+        eventArgs: {
+          errorMessage: 'Failed with: Token does not contain three dots',
+          context: {
+            ip: '::1',
+            referrer: undefined,
+            operationName: 'TestQuery',
+            userAgent: expect.stringMatching(/^axios\//),
+            url: '/graphql?operationName=TestQuery'
+          }
+        }
+      },
+      {
+        type: 'client-request-failed',
+        eventArgs: {
+          statusCode: 401,
+          response: { errors: [{ type: 'auth-error', message: 'Failed with: Token does not contain three dots' }] },
+          message: 'Token does not contain three dots',
+          stack: expect.any(String)
+        }
+      }
+    ])
   })
 
   it('fails getting graphql with an unknown query', async () => {
@@ -367,7 +459,7 @@ describe('graphql-http-server', () => {
       {
         type: 'graphql-error',
         eventArgs: {
-          errorMessage: 'unhandled-error',
+          errorMessage: 'Unhandled error',
           context: {
             ip: '::1',
             referrer: undefined,

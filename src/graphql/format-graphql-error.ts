@@ -10,10 +10,6 @@ export function isGraphQLError(err: Error | GraphQLError | GraphQLFormattedError
 
 export function isClientsideError(error: Error | GraphQLError | GraphQLFormattedError): boolean {
   if (isGraphQLError(error)) {
-    if (error.extensions.errorKind === 'GraphQLError' && error.extensions.originalError == null) {
-      return true
-    }
-
     if (error.originalError === undefined) {
       // Syntax error in query
       return true
@@ -29,7 +25,6 @@ export function formatGenericError(err: Error | GraphQLError): GraphQLFormattedE
   const isAGraphQLError = isGraphQLError(err)
 
   const error: GraphQLFormattedError = {
-    //type: 'server-error',
     message: 'Something went wrong.',
     locations: isAGraphQLError ? err.locations : undefined,
     path: isAGraphQLError ? err.path : undefined,
