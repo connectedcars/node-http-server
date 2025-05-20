@@ -1,10 +1,10 @@
-import { utils } from '@connectedcars/backend'
 import { JwtVerifyError } from '@connectedcars/jwtutils'
 import { GraphQLFormattedError } from 'graphql'
 import * as graphqlHttp from 'graphql-http'
 
 import * as httpServer from '../http-server'
 import { isClientsideError } from './format-graphql-error'
+import { getIp } from './get-ip'
 import { tryGetOperationName } from './graphql-operation-name'
 import { parseTraceInfoFromHeaders } from './parse-trace-info'
 
@@ -99,7 +99,7 @@ export abstract class GraphQLServer<
    */
   protected getBaseErrorContext(req: GraphQLRequest): ErrorContext {
     return {
-      ip: utils.getIp(req),
+      ip: getIp(req),
       referrer: req.headers['referer'],
       operationName: tryGetOperationName(req),
       userAgent: req.headers['user-agent'],

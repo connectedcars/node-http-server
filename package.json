@@ -44,6 +44,7 @@
     "@babel/preset-typescript": "7.24.6",
     "@connectedcars/setup": "^0.23.1",
     "@connectedcars/test": "^1.4.1",
+    "@types/express": "^5.0.2",
     "@types/jest": "29.5.12",
     "@types/node": "^22.15.17",
     "@typescript-eslint/eslint-plugin": "7.11.0",
@@ -61,7 +62,6 @@
     "typescript": "5.4.5"
   },
   "dependencies": {
-    "@connectedcars/backend": "^8.65.4",
     "@connectedcars/jwtutils": "^2.0.3",
     "@connectedcars/logutil": "^6.0.0",
     "graphql-http": "^1.22.4"
