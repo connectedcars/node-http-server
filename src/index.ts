@@ -1,2 +1,2 @@
-import * as HTTPServer from './http-server'
-export { HTTPServer }
+export * as GraphQLHTTPServer from './graphql'
+export * as HTTPServer from './http-server'
