@@ -235,8 +235,15 @@ describe('TestServer', () => {
             }
           }
         )
-        // Either 'write EPIPE' or 'read ECONNRESET' or 'socket hang up' can be thrown
-      ).rejects.toThrow(/EPIPE|ECONNRESET|socket hang up/)
+      ).rejects.toMatchObject({
+        message: 'Request failed with status code 413',
+        response: {
+          status: 413,
+          statusText: 'Payload Too Large',
+          data: { error: 'server_error', message: 'Request Entity Too Large' }
+        },
+        status: 413
+      })
     })
 
     it('POST /logs without body', async () => {

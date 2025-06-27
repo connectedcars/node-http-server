@@ -322,8 +322,13 @@ export async function parseBodyFromRequest(
     req.on('data', chunk => {
       body.push(chunk)
       bodySize += chunk.length
+
       if (bodySize > maxBodySize) {
-        req.destroy()
+        // Remove all listeners, pause the stream to stop emitting 'data'
+        // events, and detach the write stream
+        req.removeAllListeners()
+        req.pause()
+        req.unpipe()
         reject(new ServerError('Request Entity Too Large', 413))
       }
     })
